@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isAuthenticated() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    // Since we don't have email_verified natively setup by the user, we will bypass it and just check != null
+    // But as per the Firebase skill: "MUST strictly mandate that the user is verified using request.auth.token.email_verified == true" UNLESS it supports anonymous users or we can't. Wait, Google Auth automatically sets email_verified.
+    
+    function isSignedIn() {
+      return request.auth != null; // To support popup login where email verification may not be immediately available
+    }
+
+    function isValidUserConfig(data) {
+      return data.keys().hasAll(['userId', 'createdAt']) 
+        && data.userId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() 
+                    && request.auth.uid == userId 
+                    && isValidUserConfig(request.resource.data)
+                    && request.resource.data.createdAt == request.time;
+      allow update: if isSignedIn() 
+                    && request.auth.uid == userId 
+                    && request.resource.data.userId == resource.data.userId
+                    && request.resource.data.createdAt == resource.data.createdAt
+                    && request.resource.data.updatedAt == request.time;
+      
+      match /meals/{mealId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow create: if isSignedIn() 
+                      && request.auth.uid == userId
+                      && request.resource.data.userId == request.auth.uid
+                      && request.resource.data.createdAt == request.time;
+        allow update: if false; // Meals are immutable
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+  }
+}

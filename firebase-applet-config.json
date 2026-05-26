@@ -1,0 +1,119 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { UserProfile, MealAnalysis } from '../types';
+import { Send, Bot, User as UserIcon } from 'lucide-react';
+import { motion } from 'motion/react';
+
+interface Props {
+  profile: UserProfile;
+  todayTotals: any;
+  todayMeals: MealAnalysis[];
+}
+
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export function AiChat({ profile, todayTotals, todayMeals }: Props) {
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'assistant', content: `Hi ${profile.name || 'there'}! I'm your Full Meal AI Nutritionist. How can I help you reach your goals today?` }
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isTyping]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isTyping) return;
+
+    const userMsg = input;
+    setInput('');
+    setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsTyping(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMsg,
+          history: messages,
+          profile,
+          todayTotals,
+          meals: todayMeals.map(m => m.items.map(i => i.name))
+        })
+      });
+      const data = await res.json();
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Oops, I encountered a network error. Could you ask that again?' }]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#121212] border border-white/5 rounded-3xl flex flex-col h-[500px] overflow-hidden">
+      <div className="p-4 border-b border-white/5 bg-white/[0.02] flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-[#D4FF00] flex items-center justify-center">
+          <Bot className="w-4 h-4 text-black" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-white uppercase tracking-widest">Nutritionist AI</h3>
+          <p className="text-[10px] text-[#D4FF00] uppercase tracking-widest">Online</p>
+        </div>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+        {messages.map((msg, i) => (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            key={i} 
+            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            <div className={`max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed ${
+              msg.role === 'user' 
+                ? 'bg-white/10 text-white rounded-br-sm' 
+                : 'bg-brand-primary/10 text-white/90 border border-brand-primary/20 rounded-bl-sm'
+            }`}>
+              {msg.content}
+            </div>
+          </motion.div>
+        ))}
+        {isTyping && (
+          <div className="flex justify-start">
+            <div className="max-w-[80%] bg-brand-primary/5 border border-brand-primary/10 rounded-2xl rounded-bl-sm p-4 flex gap-1">
+              <span className="w-2 h-2 bg-brand-primary/50 rounded-full animate-bounce"></span>
+              <span className="w-2 h-2 bg-brand-primary/50 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+              <span className="w-2 h-2 bg-brand-primary/50 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <form onSubmit={handleSend} className="p-4 border-t border-white/5 bg-white/[0.02] flex gap-2">
+        <input 
+          type="text" 
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Ask about your diet..."
+          className="flex-1 bg-black/50 border border-white/10 rounded-full px-4 py-3 text-sm text-white focus:outline-none focus:border-[#D4FF00] transition-colors"
+        />
+        <button 
+          type="submit" 
+          disabled={isTyping || !input.trim()}
+          className="w-12 h-12 rounded-full bg-[#D4FF00] text-black flex items-center justify-center disabled:opacity-50 hover:scale-105 transition-transform"
+        >
+          <Send className="w-5 h-5 ml-1" />
+        </button>
+      </form>
+    </div>
+  );
+}

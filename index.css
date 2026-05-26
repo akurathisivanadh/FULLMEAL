@@ -1,0 +1,178 @@
+import React, { useState, useEffect } from 'react';
+import { useAppStore } from './store';
+import { ProfileForm } from './components/Profile';
+import { Dashboard } from './components/Dashboard';
+import { CameraUpload } from './components/CameraUpload';
+import { AnalysisView } from './components/AnalysisView';
+import { LoginScreen } from './components/LoginScreen';
+import { useAuth } from './contexts/AuthContext';
+import { MealAnalysis } from './types';
+import { Loader2, Activity, LogOut } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+type AppState = 'PROFILE' | 'DASHBOARD' | 'CAMERA' | 'ANALYSING' | 'RESULT';
+
+export default function App() {
+  const { user, loading: authLoading, logout } = useAuth();
+  const { profile, updateProfile, history, addMeal, loading: storeLoading } = useAppStore();
+  
+  const [appState, setAppState] = useState<AppState>('DASHBOARD');
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [currentAnalysis, setCurrentAnalysis] = useState<MealAnalysis | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!storeLoading) {
+      if (!profile) {
+        setAppState('PROFILE');
+      } else if (appState === 'PROFILE') {
+        setAppState('DASHBOARD');
+      }
+    }
+  }, [profile, storeLoading]);
+
+  const handleSaveProfile = async (p: any) => {
+    await updateProfile(p);
+  };
+
+  const handleCapture = async (base64: string) => {
+    setCurrentImage(base64);
+    setAppState('ANALYSING');
+    setApiError(null);
+    setCurrentAnalysis(null);
+
+    try {
+      const res = await fetch('/api/analyze-food', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64 })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Analysis failed');
+      
+      if (!data.isFood) {
+        throw new Error(data.rejectionReason || 'Unable to detect food in this image. Please try again.');
+      }
+
+      setCurrentAnalysis({
+        ...data,
+        timestamp: new Date().toISOString(),
+        imageUrl: base64
+      });
+      setAppState('RESULT');
+    } catch (err: any) {
+      setApiError(err.message || 'An error occurred during analysis');
+      setAppState('CAMERA');
+    }
+  };
+
+  const handleSaveMeal = async () => {
+    if (currentAnalysis && currentAnalysis.isFood) {
+      await addMeal(currentAnalysis);
+    }
+    setAppState('DASHBOARD');
+  };
+
+  if (authLoading || (user && storeLoading)) {
+    return (
+      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#D4FF00] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-brand-primary/30">
+      
+      {/* Top Nav */}
+      <header className="border-b border-dark-border bg-dark-surface/50 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div 
+            className="flex items-center gap-2 font-bold text-xl tracking-tight uppercase cursor-pointer"
+            onClick={() => profile && setAppState('DASHBOARD')}
+          >
+            <div className="w-8 h-8 bg-brand-primary rounded-lg flex items-center justify-center">
+              <div className="w-4 h-4 bg-black rounded-sm"></div>
+            </div>
+            <span>Full Meal AI</span>
+          </div>
+
+          {profile && (
+            <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setAppState('PROFILE')}
+                className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center bg-[#121212] hover:bg-white/5 transition-colors"
+              >
+                <span className="font-bold text-sm text-[#D4FF00]">{profile.name ? profile.name.charAt(0).toUpperCase() : profile.gender.charAt(0)}</span>
+              </button>
+              <button onClick={() => logout()} className="text-white/40 hover:text-white transition-colors">
+                <LogOut className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="px-4 md:px-6 pt-8 pb-20">
+        <AnimatePresence mode="wait">
+          {appState === 'PROFILE' && (
+            <motion.div key="profile" exit={{opacity: 0, y: -20}}>
+              <ProfileForm initialProfile={profile} onSave={handleSaveProfile} />
+            </motion.div>
+          )}
+          
+          {appState === 'DASHBOARD' && profile && (
+            <motion.div key="dashboard" exit={{opacity: 0, scale: 0.95}}>
+              <Dashboard profile={profile} history={history} onNewScan={() => setAppState('CAMERA')} />
+            </motion.div>
+          )}
+
+          {appState === 'CAMERA' && (
+            <motion.div key="camera" exit={{opacity: 0, scale: 0.95}}>
+              {apiError && (
+                <div className="max-w-lg mx-auto bg-red-500/10 border border-red-500/20 text-red-500 font-bold p-4 rounded-xl mb-6 text-sm">
+                  {apiError}
+                </div>
+              )}
+              <CameraUpload onCapture={handleCapture} />
+              <div className="mt-4 text-center">
+                <button onClick={() => setAppState('DASHBOARD')} className="text-white/40 uppercase text-xs font-bold hover:text-white">Cancel</button>
+              </div>
+            </motion.div>
+          )}
+
+          {appState === 'ANALYSING' && (
+            <motion.div 
+              key="analysing" 
+              initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}}
+              className="fixed inset-0 z-50 bg-dark-bg/90 backdrop-blur-xl flex flex-col items-center justify-center"
+            >
+              <div className="relative">
+                <div className="w-24 h-24 border-4 border-dark-border rounded-full shadow-[0_0_40px_rgba(0,229,255,0.1)]"></div>
+                <div className="w-24 h-24 border-4 border-brand-primary rounded-full border-t-transparent animate-spin absolute inset-0"></div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <Activity className="w-8 h-8 text-brand-primary animate-pulse" />
+                </div>
+              </div>
+              <h3 className="text-xl font-display font-medium text-white mt-8 mb-2">Analyzing Biomarkers</h3>
+              <p className="text-brand-primary/60 font-mono text-sm animate-pulse">Running advanced macro estimation...</p>
+            </motion.div>
+          )}
+
+          {appState === 'RESULT' && currentAnalysis && (
+            <motion.div key="result" exit={{opacity: 0, y: 20}}>
+              <AnalysisView analysis={currentAnalysis} onContinue={handleSaveMeal} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
+
+    </div>
+  );
+}

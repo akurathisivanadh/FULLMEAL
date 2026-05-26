@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and target macros.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "age": { "type": "number" },
+        "gender": { "type": "string" },
+        "height": { "type": "number" },
+        "weight": { "type": "number" },
+        "activityLevel": { "type": "string" },
+        "healthGoals": { "type": "array", "items": { "type": "string" } },
+        "lifestyleHabits": { "type": "array", "items": { "type": "string" } },
+        "healthConditions": { "type": "array", "items": { "type": "string" } },
+        "bmi": { "type": "number" },
+        "targetMacros": {
+          "type": "object",
+          "properties": {
+            "calories": { "type": "number" },
+            "protein": { "type": "number" },
+            "carbs": { "type": "number" },
+            "fats": { "type": "number" },
+            "fiber": { "type": "number" }
+          }
+        },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "age", "height", "weight"]
+    },
+    "MealAnalysis": {
+      "title": "MealAnalysis",
+      "description": "A food scan or meal tracked by the user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "isFood": { "type": "boolean" },
+        "items": { "type": "array" },
+        "totals": {
+          "type": "object",
+          "properties": {
+            "calories": { "type": "number" },
+            "protein": { "type": "number" },
+            "carbs": { "type": "number" },
+            "fats": { "type": "number" },
+            "fiber": { "type": "number" }
+          }
+        },
+        "healthInsights": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "timestamp", "isFood", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles. Users can only read and write their own profile."
+    },
+    "users/{userId}/meals/{mealId}": {
+      "schema": { "$ref": "#/entities/MealAnalysis" },
+      "description": "Meals tracked by the user."
+    }
+  }
+}
